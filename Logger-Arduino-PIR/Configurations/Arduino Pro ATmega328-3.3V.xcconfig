@@ -45,3 +45,14 @@ HEADER_SEARCH_PATHS = /Applications/Arduino.app/Contents/Resources/Java/** /Appl
 MAX_RAM_SIZE = 2048
 
 CONFIG_NAME = Arduino Pro ATmega328-3.3V
+
+// Need to specify the baud rate for transfers
+AVRDUDE_BAUDRATE = 38400
+
+// Specific programmer and AVRDUDE options
+// ----------------------------------
+// Only set values for parameters different from default, otherwise comment
+//
+BOOTLOADER = minicore
+//AVRDUDE_CONF = $(HOME)/Library/Arduino15/packages/MiniCore/hardware/avr/1.0.3/avrdude.conf
+

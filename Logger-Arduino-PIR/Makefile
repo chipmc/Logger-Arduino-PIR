@@ -21,17 +21,35 @@
 # List application Arduino/chipKIT/Digispark/Energia/Maple/Microduino/Teensy/Wiring libraries here
 # default = 0 = none
 #
-APP_LIBS_LIST = 0
+# ARDUINO : AVR = EEPROM HID SoftwareSerial SPI Wire 
+# ARDUINO : common = Bridge Esplora Ethernet Firmata GSM 
+#	LiquidCrystal Robot_Control Robot_Motor RobotIRremote SD Servo 
+#	SpacebrewYun Stepper Temboo TFT WiFi 
+#
+APP_LIBS_LIST = Wire EEPROM
 
 # List user's libraries here 
 # default = 0 = none
 #
-USER_LIBS_LIST = 0
+# USER = Adafruit_ADS1X15 Adafruit_AM2315 Adafruit_BLE_UART 
+#	Adafruit_BLEFirmata Adafruit_BluefruitLE_nRF51 Adafruit_CC3000 
+#	Adafruit_DotStar Adafruit_FONA Adafruit_FONA_OLD Adafruit_FONA_Teensy 
+#	Adafruit_FRAM_I2C Adafruit_GFX_Library Adafruit_GPS Adafruit_INA219 
+#	Adafruit_MAX31855 Adafruit_NeoPixel Adafruit_SSD1306 APA102 
+#	arduino_865227 Bounce2 Bridge DHT DS1307RTC DS3232RTC DS3234 DSRTCLib 
+#	EnableInterrupt FastLED Firmata fxos8700cq GPS HIH61XX HIH61XXCommander 
+#	i2c_t3 Keyboard Keypad LGPRS LSM303 MAX17043 MicroView Mouse 
+#	MQTT MQTTClient NewPing Phant PubSubClient RadioHead RFM69 
+#	Robot_Control RTClib RunningAverage SdFat Servo SFE_CC3000 
+#	SFE_MicroOLED SoftI2CMaster SpacebrewYun SPIFlash Temboo Time TimeLib 
+#	Timezone TinyWireM Twitter U8glib Ubidots 
+#
+USER_LIBS_LIST = MAX17043 Adafruit_FRAM_I2C TimeLib DS3232RTC
 
 # List local libraries here
 # default = empty = all
 #
-LOCAL_LIBS_LIST =
+LOCAL_LIBS_LIST = digitalWriteFast FRAMcommon
 
 # List core, application and user's libraries to be excluded
 # For example, WiFi may crash on Arduino 1.0.2, Esplora on Arduino 1.0.3, Firmata on Teensy 3.0,
@@ -82,7 +100,7 @@ NO_SERIAL_CONSOLE =
 # BOARD_PORT is optional
 # If not defined, BOARD_PORT = /dev/tty.usb* (default)
 #
-#BOARD_PORT = /dev/tty.usbmodem*
+BOARD_PORT = /dev/cu.usbserial*
 
 # Xcode takes SKETCHBOOK_DIR from preferences.txt
 # If not defined, each IDE has its own SKETCHBOOK_DIR (default)
@@ -93,7 +111,7 @@ NO_SERIAL_CONSOLE =
 # SERIAL_BAUDRATE for the serial console, 9600 by default
 # Uncomment and specify another speed
 #
-#SERIAL_BAUDRATE = 115200
+#SERIAL_BAUDRATE = 9600
 
 # OPTIMISATION for the optimisation and debugger levels
 # Uncomment and specify another options
@@ -142,3 +160,4 @@ BUILDS_PATH       := $(BUILT_PRODUCTS_DIR)
 BUILDS_PATH_SPACE := $(BUILDS_PATH)
 
 include $(MAKEFILE_PATH)/Step1.mk
+
