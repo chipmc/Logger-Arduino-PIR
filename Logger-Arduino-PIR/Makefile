@@ -100,7 +100,7 @@ NO_SERIAL_CONSOLE =
 # BOARD_PORT is optional
 # If not defined, BOARD_PORT = /dev/tty.usb* (default)
 #
-BOARD_PORT = /dev/cu.usbserial*
+BOARD_PORT = /dev/cu.usbserial-DN01JSG8
 
 # Xcode takes SKETCHBOOK_DIR from preferences.txt
 # If not defined, each IDE has its own SKETCHBOOK_DIR (default)

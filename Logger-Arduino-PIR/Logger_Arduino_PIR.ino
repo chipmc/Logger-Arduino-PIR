@@ -379,6 +379,8 @@ void loop()
                 Serial.println(FRAMread16(CURRENTDAILYCOUNTADDR));
                 Serial.print(F("Free memory: "));
                 Serial.println(freeRam());
+                Serial.print(F("Reboots: "));
+                Serial.println(bootcount);
                 break;
             case '2':     // Set the clock
                 SetTimeDate();
@@ -761,12 +763,12 @@ void sleepNow()
     noInterrupts ();          // make sure we don't get interrupted before we sleep
     set_sleep_mode (SLEEP_MODE_PWR_DOWN);
     sleep_enable ();          // enables the sleep bit in the mcucr register
-    ADCSRA = 0;            // turn off ADC
-    power_all_disable ();  // power off ADC, Timer 0 and 1, serial interface
+ //   ADCSRA = 0;            // turn off ADC
+ //   power_all_disable ();  // power off ADC, Timer 0 and 1, serial interface
     interrupts ();           // interrupts allowed now, next instruction WILL be executed
     sleep_cpu ();            // here the device is put to sleep
     sleep_disable ();         // first thing after waking from sleep:
-    power_all_enable ();   // power everything back on
+ //   power_all_enable ();   // power everything back on
     delay(10);               // This small delay gives the i2c bus time to reinitialize
     Serial.begin(9600);   // Restart Serial
     Serial.println("Waking up");
