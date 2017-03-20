@@ -101,34 +101,35 @@
 #define DAILYPERIOD day(t) // Normally day(t) but can use minute(t) or hour(t) for debugging
 
 //These defines let me change the memory map and configuration without hunting through the whole program
-#define VERSIONNUMBER 7      // Increment this number each time the memory map is changed
-#define WORDSIZE 8            // For the Word size
-#define PAGESIZE 4096         // Memory size in bytes / word size - 256kb FRAM
+#define VERSIONNUMBER 7             // Increment this number each time the memory map is changed
+#define WORDSIZE 8                  // For the Word size
+#define PAGESIZE 4096               // Memory size in bytes / word size - 256kb FRAM
 // First Word - 8 bytes for setting global values
-#define DAILYOFFSET 2        // First word of daily counts
-#define HOURLYOFFSET 30        // First word of hourly counts (remember we start counts at 1)
-#define DAILYCOUNTNUMBER 28    // used in modulo calculations - sets the # of days stored
-#define HOURLYCOUNTNUMBER 4064 // used in modulo calculations - sets the # of hours stored - 256k (4096-14-2)
-#define VERSIONADDR 0x0       // Memory Locations By Name not Number
-#define PARKOPENSADDR 0x1   // When does the park open
-#define PARKCLOSESADDR 0x2        // when does the park close
-#define DAILYPOINTERADDR 0x4    // One byte for daily pointer
-#define HOURLYPOINTERADDR 0x5   // Two bytes for hourly pointer
-#define CONTROLREGISTER 0x7     // This is the control register acted on by both Simblee and Arduino
+#define DAILYOFFSET 2               // First word of daily counts
+#define HOURLYOFFSET 30             // First word of hourly counts (remember we start counts at 1)
+#define DAILYCOUNTNUMBER 28         // used in modulo calculations - sets the # of days stored
+#define HOURLYCOUNTNUMBER 4064      // used in modulo calculations - sets the # of hours stored - 256k (4096-14-2)
+#define VERSIONADDR 0x0             // Memory Locations By Name not Number
+#define PARKOPENSADDR 0x1           // When does the park open
+#define PARKCLOSESADDR 0x2          // when does the park close
+#define MONTHLYREBOOTCOUNT 0x3      // This is where we store the reboots - indication of system health
+#define DAILYPOINTERADDR 0x4        // One byte for daily pointer
+#define HOURLYPOINTERADDR 0x5       // Two bytes for hourly pointer
+#define CONTROLREGISTER 0x7         // This is the control register acted on by both Simblee and Arduino
 //Second Word - 8 bytes for storing current counts
-#define CURRENTHOURLYCOUNTADDR 0x8
-#define CURRENTDAILYCOUNTADDR 0xA
-#define CURRENTCOUNTSTIME 0xC
+#define CURRENTHOURLYCOUNTADDR 0x8  // Current Hourly Count
+#define CURRENTDAILYCOUNTADDR 0xA   // Current Daily Count
+#define CURRENTCOUNTSTIME 0xC       // Time of last count
 //These are the hourly and daily offsets that make up the respective words
-#define DAILYDATEOFFSET 1         //Offsets for the value in the daily words
-#define DAILYCOUNTOFFSET 2        // Count is a 16-bt value
-#define DAILYBATTOFFSET 4
+#define DAILYDATEOFFSET 1           //Offsets for the value in the daily words
+#define DAILYCOUNTOFFSET 2          // Count is a 16-bt value
+#define DAILYBATTOFFSET 4           // Where the battery charge is stored
 #define HOURLYCOUNTOFFSET 4         // Offsets for the values in the hourly words
-#define HOURLYBATTOFFSET 6
+#define HOURLYBATTOFFSET 6          // Where the hourly battery charge is stored
 // LED Pin Value Variables
-#define REDLED 6          // led connected to digital pin 4
-#define YELLOWLED 4       // The yellow LED
-#define LEDPWR 7          // This pin turns on and off the LEDs
+#define REDLED 6                    // led connected to digital pin 4
+#define YELLOWLED 4                 // The yellow LED
+#define LEDPWR 7                    // This pin turns on and off the LEDs
 // Finally, here are the variables I want to change often and pull them all together here
 #define SOFTWARERELEASENUMBER "0.2.3"
 
@@ -226,7 +227,6 @@ int bootCountAddr = 0;              // Address for Boot Count Number
 // Add setup code
 void setup()
 {
-    Wire.begin();
     Serial.begin(9600);                     // Initialize communications with the terminal
     Serial.println("");                     // Header information
     Serial.print(F("Connected Sensor PIR - release "));
@@ -242,6 +242,27 @@ void setup()
     pinModeFast(THE32KPIN,INPUT);           // These are the pins tha are used to negotiate for the i2c bus
     pinModeFast(TALKPIN,INPUT);             // These are the pins tha are used to negotiate for the i2c bus
     
+    wdt_reset();            // Reset in case watchdog was already running
+    wdt_enable(WDTO_1S);    // Gives this set of actions 1 second to complete
+    int rtn = I2C_ClearBus(); // clear the I2C bus first before calling Wire.begin()
+    if (rtn != 0)
+    {
+        Serial.println(F("I2C bus error. Could not clear"));
+        if (rtn == 1) {
+            Serial.println(F("SCL clock line held low"));
+        } else if (rtn == 2) {
+            Serial.println(F("SCL clock line held low by slave clock stretch"));
+        } else if (rtn == 3) {
+            Serial.println(F("SDA data line held low"));
+        }
+    }
+    else    // Else the bus is clear - can restart Wire
+    {
+        Wire.begin();
+    }
+    wdt_disable();  // Diable the watchdog timer
+    Serial.println(F("Wire setup finished"));
+
     
     enable32Khz(1); // turns on the 32k squarewave - to moderate access to the i2c bus
     
@@ -254,7 +275,6 @@ void setup()
         BlinkForever();
     }
     GiveUpTheBus(); // Done with i2c initializations Arduino gives up the bus here.
-    
     
     if (FRAMread8(VERSIONADDR) != VERSIONNUMBER) {  // Check to see if the memory map in the sketch matches the data on the chip
         Serial.print(F("FRAM Version Number: "));
@@ -305,11 +325,11 @@ void setup()
     controlRegisterValue = FRAMread8(CONTROLREGISTER);
     FRAMwrite8(CONTROLREGISTER, controlRegisterValue | turnLedsOn); // Turn on the LEDs at startup
     
-    Serial.print("Sensor is warming up...");
+    Serial.print(F("Sensor is warming up..."));
     controlRegisterValue = FRAMread8(CONTROLREGISTER);
     FRAMwrite8(CONTROLREGISTER, controlRegisterValue | warmUpFlag);  // Turn on the warm up flag
     while (millis() < warmUpTime);
-    Serial.println("ready to go!");
+    Serial.println(F("ready to go!"));
     controlRegisterValue = FRAMread8(CONTROLREGISTER);
     FRAMwrite8(CONTROLREGISTER, controlRegisterValue & clearWarmUpFlag);  // Turn off the warm up flag
     
@@ -317,16 +337,17 @@ void setup()
     Serial.print(F("Monthly reboot count is "));
     bootCountAddr = EEPROM.read(0);             // Here is where we will track reboots by month - offset stored in 0 byte
     bootcount = EEPROM.read(bootCountAddr);     // Use the offset to get to this month's boot count
-    bootcount++;                            // Increment the boot count
+    bootcount++;                                // Increment the boot count
     Serial.print(bootcount);
-    EEPROM.write(bootCountAddr, bootcount); // Write it back into the correct spot
+    EEPROM.write(bootCountAddr, bootcount);     // Write it back into the correct spot
     Serial.print(F(" with a monthly offset of: "));
     TakeTheBus();
-    t = RTC.get();
+        t = RTC.get();
     GiveUpTheBus();
-    bootCountAddr = month(t);       // Boot counts are offset by month to reduce burn - in risk
-    EEPROM.update(0, bootCountAddr);    // Will update the month if it has changed but only at reboot
-    Serial.println(EEPROM.read(0));      // Print so we can see if code is working
+    bootCountAddr = month(t);                   // Boot counts are offset by month to reduce burn - in risk
+    EEPROM.update(0, bootCountAddr);            // Will update the month if it has changed but only at reboot
+    Serial.println(EEPROM.read(0));             // Print so we can see if code is working
+    FRAMwrite8(MONTHLYREBOOTCOUNT, bootcount); // Store in FRAM for access by Simblee in user interface
     
     Serial.print(F("Free memory: "));
     Serial.println(freeRam());
@@ -553,7 +574,7 @@ void CheckForBump() // This is where we check to see if an interrupt is set when
     digitalWrite(REDLED,ledState);
     PIRInt = false; // Reset the flag
     TakeTheBus();
-    t = RTC.get();
+        t = RTC.get();
     Serial.print(".");
     GiveUpTheBus();
     Serial.print(".");
@@ -587,11 +608,11 @@ void CheckForBump() // This is where we check to see if an interrupt is set when
 void StartStopTest(boolean startTest)  // Since the test can be started from the serial menu or the Simblee - created a function
 {
     tmElements_t tm;
+    TakeTheBus();
+        t = RTC.get();                    // Gets the current time
+    GiveUpTheBus();
     if (startTest) {
         inTest = true;
-        TakeTheBus();
-        t = RTC.get();                    // Gets the current time
-        GiveUpTheBus();
         currentHourlyPeriod = HOURLYPERIOD;   // Sets the hour period for when the count starts (see #defines)
         currentDailyPeriod = DAILYPERIOD;     // And the day  (see #defines)
         // Deterimine when the last counts were taken check when starting test to determine if we reload values or start counts over
@@ -611,15 +632,13 @@ void StartStopTest(boolean startTest)  // Since the test can be started from the
         Serial.println(F("Test Started"));
     }
     else {
-        inTest = false;
-        TakeTheBus();
-        t = RTC.get();
-        GiveUpTheBus();
+        PIRInt = false;                 // Reset this flag in case interrupt just happened
+        inTest = false;                 // Set the flag that indicates we are not in a test
         FRAMwrite16(CURRENTDAILYCOUNTADDR, dailyPersonCount);   // Load Daily Count to memory
         FRAMwrite16(CURRENTHOURLYCOUNTADDR, hourlyPersonCount);  // Load Hourly Count to memory
         FRAMwrite32(CURRENTCOUNTSTIME, t);   // Write to FRAM - this is so we know when the last counts were saved
-        hourlyPersonCount = 0;        // Reset Person Count
-        dailyPersonCount = 0;         // Reset Person Count
+        hourlyPersonCount = 0;          // Reset Person Count
+        dailyPersonCount = 0;           // Reset Person Count
         Serial.println(F("Test Stopped"));
     }
 }
@@ -739,10 +758,6 @@ void ClearPinChangeInterrupt(byte Pin)  // Here is where we clear the pinchange 
 ISR (PCINT2_vect)   // interrupt service routine in sleep mode for PIR PinChange Interrupt (D0-D7)
 {
     // execute code here after wake-up before returning to the loop() function
-    // timers and code using timers (serial.print and more...) will not work here.
-    // we don't really need to execute any special functions here, since we
-    // just want the thing to wake up
-    sleep_disable();         // first thing after waking from sleep is to disable sleep...
     if (inTest == 1 && digitalReadFast(PIRPIN)) {       // remember this is a pin change - want to make sure it is HIGH
         PIRInt = true;  //
     }
@@ -758,20 +773,17 @@ void sleepNow()
 {
     // Here is a great tutorial on interrupts and sleep: http://www.gammon.com.au/interrupts
     Serial.print(F("Entering Sleep mode..."));
-    Serial.flush ();  // wait for Serial to finish outputting
-    Serial.end ();    // shut down Serial
-    noInterrupts ();          // make sure we don't get interrupted before we sleep
+    Serial.flush ();            // wait for Serial to finish outputting
+    Serial.end ();              // shut down Serial
+    noInterrupts ();            // make sure we don't get interrupted before we sleep
     set_sleep_mode (SLEEP_MODE_PWR_DOWN);
-    sleep_enable ();          // enables the sleep bit in the mcucr register
- //   ADCSRA = 0;            // turn off ADC
- //   power_all_disable ();  // power off ADC, Timer 0 and 1, serial interface
-    interrupts ();           // interrupts allowed now, next instruction WILL be executed
-    sleep_cpu ();            // here the device is put to sleep
-    sleep_disable ();         // first thing after waking from sleep:
- //   power_all_enable ();   // power everything back on
-    delay(10);               // This small delay gives the i2c bus time to reinitialize
-    Serial.begin(9600);   // Restart Serial
-    Serial.println("Waking up");
+    sleep_enable ();            // enables the sleep bit in the mcucr register
+    interrupts ();              // interrupts allowed now, next instruction WILL be executed
+    sleep_cpu ();               // here the device is put to sleep
+    sleep_disable ();           // first thing after waking from sleep:
+    delay(10);                  // This small delay gives the i2c bus time to reinitialize
+    Serial.begin(9600);         // Restart Serial
+    Serial.println(F("Waking up"));
 }
 
 void toArduinoTime(time_t unixT) // Puts time in format for reporting

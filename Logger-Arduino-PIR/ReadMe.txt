@@ -22,15 +22,14 @@ License - BSD Release 3
 
 Hardware setup:
 - Sparkfun Arduino Pro Mini - 3.3V / 8Mhz
+- **Important** For the Watchdog Timer Functions to work, you need to reflash the Arduino with the MiniCore Bootloader
+- For Information, go here: https://github.com/MCUdude/MiniCore
 - PIR Sensor with 3.3V and Signal on INT2-D3
 - INT2 - D3
 - INT1 - D2  - Not currently used
 - TI FRAM Chip on i2c Bus
 - DS3231 RTC Module on the i2c bus
 - Indicator LED on pin 4
-- accelSensitivity and debounce are set via terminal and stored in FRAM
-- Inverter used to invert the interrupt from the accelerometer and send to INT2PIN
-- Adafruit Bluetooth UART friend used to provide remote serial support
 
 Memory Map v7
 
@@ -40,7 +39,7 @@ The first word is for system data
 0        Memory Map Version (this program expects 2)
 1        Park Opens  (24 hour clock)
 2        Park Closes (24 hour clock)
-3        Available
+3        Monthly Reboot Count - System Health
 4        Daily Count Pointer
 5-5      Current Hourly Count Pointer (16-bit number)
 7        Control Register  (8 - 5 Reserved, 4- LEDs, 3-Start / Stop Test, 2-Warm Up, 1-LEDs)
