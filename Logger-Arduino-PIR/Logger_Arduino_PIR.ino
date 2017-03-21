@@ -131,7 +131,7 @@
 #define YELLOWLED 4                 // The yellow LED
 #define LEDPWR 7                    // This pin turns on and off the LEDs
 // Finally, here are the variables I want to change often and pull them all together here
-#define SOFTWARERELEASENUMBER "0.2.3"
+#define SOFTWARERELEASENUMBER "1.0.0"
 
 
 
@@ -242,8 +242,8 @@ void setup()
     pinModeFast(THE32KPIN,INPUT);           // These are the pins tha are used to negotiate for the i2c bus
     pinModeFast(TALKPIN,INPUT);             // These are the pins tha are used to negotiate for the i2c bus
     
-    wdt_reset();            // Reset in case watchdog was already running
-    wdt_enable(WDTO_1S);    // Gives this set of actions 1 second to complete
+
+    wdt_enable(WDTO_4S);    // Gives this set of actions 2 seconds to complete
     int rtn = I2C_ClearBus(); // clear the I2C bus first before calling Wire.begin()
     if (rtn != 0)
     {
@@ -258,9 +258,10 @@ void setup()
     }
     else    // Else the bus is clear - can restart Wire
     {
+        wdt_disable();
         Wire.begin();
     }
-    wdt_disable();  // Diable the watchdog timer
+
     Serial.println(F("Wire setup finished"));
 
     
@@ -340,6 +341,7 @@ void setup()
     bootcount++;                                // Increment the boot count
     Serial.print(bootcount);
     EEPROM.write(bootCountAddr, bootcount);     // Write it back into the correct spot
+    FRAMwrite8(MONTHLYREBOOTCOUNT, bootcount); // Store in FRAM for access by Simblee in user interface
     Serial.print(F(" with a monthly offset of: "));
     TakeTheBus();
         t = RTC.get();
@@ -347,7 +349,7 @@ void setup()
     bootCountAddr = month(t);                   // Boot counts are offset by month to reduce burn - in risk
     EEPROM.update(0, bootCountAddr);            // Will update the month if it has changed but only at reboot
     Serial.println(EEPROM.read(0));             // Print so we can see if code is working
-    FRAMwrite8(MONTHLYREBOOTCOUNT, bootcount); // Store in FRAM for access by Simblee in user interface
+
     
     Serial.print(F("Free memory: "));
     Serial.println(freeRam());
@@ -401,7 +403,7 @@ void loop()
                 Serial.print(F("Free memory: "));
                 Serial.println(freeRam());
                 Serial.print(F("Reboots: "));
-                Serial.println(bootcount);
+                Serial.println(FRAMread8(MONTHLYREBOOTCOUNT));
                 break;
             case '2':     // Set the clock
                 SetTimeDate();
