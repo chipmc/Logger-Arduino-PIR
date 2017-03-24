@@ -145,7 +145,6 @@
 #include <TimeLib.h>            //http://www.arduino.cc/playground/Code/Time
 #include "DS3232RTC.h"          //http://github.com/JChristensen/DS3232RTC
 #include "Adafruit_FRAM_I2C.h"  // Library for FRAM functions
-#include "digitalWriteFast.h"   // Try to cut down on overhead for timing sensitive IO - https://github.com/NicksonYap/digitalWriteFast
 #include "FRAMcommon.h"         // Where I put all the common FRAM read and write extensions
 
 
@@ -204,6 +203,8 @@ int controlRegisterDelay = 1000;            // Ho often will we check the contro
 
 // PIR Sensor Variables
 unsigned long warmUpTime = 1000;    // PIR Sensors need 45-60 seconds to warm up
+volatile bool PIRInt = false;       // A flag for the PIR Interrupt
+boolean countEnable = false;        // Need to count only once for each time the sensor triggers
 
 // Battery monitor
 float stateOfCharge = 0;            // stores battery charge level value
@@ -211,7 +212,6 @@ float stateOfCharge = 0;            // stores battery charge level value
 //Menu and Program Variables
 unsigned long lastBump = 0;         // set the time of an event
 bool ledState = false;              // variable used to store the last LED status, to toggle the light
-volatile bool PIRInt = false;       // A flag for the PIR Interrupt
 bool refreshMenu = true;            //  Tells whether to write the menu
 bool inTest = false;                // Are we in a test or not
 bool LEDSon = true;                 // Are the LEDs on or off
@@ -228,54 +228,36 @@ int bootCountAddr = 0;              // Address for Boot Count Number
 void setup()
 {
     Serial.begin(9600);                     // Initialize communications with the terminal
+    Serial.print(".");
     Serial.println("");                     // Header information
     Serial.print(F("Connected Sensor PIR - release "));
     Serial.println(releaseNumber);
-    pinModeFast(REDLED, OUTPUT);            // declare the Red LED Pin as an output
-    pinModeFast(YELLOWLED, OUTPUT);         // declare the Yellow LED Pin as as OUTPUT
-    pinModeFast(LEDPWR, OUTPUT);            // declare the Power LED pin as as OUTPUT
-    digitalWriteFast(LEDPWR, LOW);          // Turn on the power to the LEDs at startup for as long as is set in LEDsonTime
-    pinModeFast(I2CPWR, OUTPUT);            // This is for V10 boards which can turn off power to the external i2c header
-    digitalWriteFast(I2CPWR, HIGH);         // Turns on the i2c port
-    pinModeFast(RESETPIN,INPUT);            // Just to make sure - if set to output, you can program the SIMBLEE
-    pinModeFast(PIRPIN, INPUT);            // Set up the interrupt pins, they're set as active low with an external pull-up
-    pinModeFast(THE32KPIN,INPUT);           // These are the pins tha are used to negotiate for the i2c bus
-    pinModeFast(TALKPIN,INPUT);             // These are the pins tha are used to negotiate for the i2c bus
-    
-
-    wdt_enable(WDTO_4S);    // Gives this set of actions 2 seconds to complete
-    int rtn = I2C_ClearBus(); // clear the I2C bus first before calling Wire.begin()
-    if (rtn != 0)
-    {
-        Serial.println(F("I2C bus error. Could not clear"));
-        if (rtn == 1) {
-            Serial.println(F("SCL clock line held low"));
-        } else if (rtn == 2) {
-            Serial.println(F("SCL clock line held low by slave clock stretch"));
-        } else if (rtn == 3) {
-            Serial.println(F("SDA data line held low"));
-        }
-    }
-    else    // Else the bus is clear - can restart Wire
-    {
-        wdt_disable();
-        Wire.begin();
-    }
-
-    Serial.println(F("Wire setup finished"));
-
-    
+    Wire.begin();
+    Serial.print(".");
+    pinMode(REDLED, OUTPUT);            // declare the Red LED Pin as an output
+    pinMode(YELLOWLED, OUTPUT);         // declare the Yellow LED Pin as as OUTPUT
+    pinMode(LEDPWR, OUTPUT);            // declare the Power LED pin as as OUTPUT
+    digitalWrite(LEDPWR, LOW);          // Turn on the power to the LEDs at startup for as long as is set in LEDsonTime
+    pinMode(I2CPWR, OUTPUT);            // This is for V10 boards which can turn off power to the external i2c header
+    digitalWrite(I2CPWR, HIGH);         // Turns on the i2c port
+    pinMode(RESETPIN,INPUT);            // Just to make sure - if set to output, you can program the SIMBLEE
+    pinMode(PIRPIN, INPUT);            // Set up the interrupt pins, they're set as active low with an external pull-up
+    pinMode(THE32KPIN,INPUT);           // These are the pins tha are used to negotiate for the i2c bus
+    pinMode(TALKPIN,INPUT);             // These are the pins tha are used to negotiate for the i2c bus
+    Serial.print(".");
     enable32Khz(1); // turns on the 32k squarewave - to moderate access to the i2c bus
-    
+    Serial.print(".");
     
     TakeTheBus(); // Need the i2c bus for initializations
-    if (fram.begin()) {  // you can stick the new i2c addr in here, e.g. begin(0x51);
-        Serial.println(F("Found I2C FRAM"));
-    } else {
-        Serial.println(F("No I2C FRAM found ... check your connections"));
-        BlinkForever();
-    }
+    Serial.print(".");
+        if (fram.begin()) {  // you can stick the new i2c addr in here, e.g. begin(0x51);
+            Serial.println(F("Found I2C FRAM"));
+        } else {
+            Serial.println(F("No I2C FRAM found ... check your connections"));
+            BlinkForever();
+        }
     GiveUpTheBus(); // Done with i2c initializations Arduino gives up the bus here.
+    Serial.println(".");
     
     if (FRAMread8(VERSIONADDR) != VERSIONNUMBER) {  // Check to see if the memory map in the sketch matches the data on the chip
         Serial.print(F("FRAM Version Number: "));
@@ -354,7 +336,6 @@ void setup()
     Serial.print(F("Free memory: "));
     Serial.println(freeRam());
     
-    SetPinChangeInterrupt(PIRPIN);      // Attach the PinChange Interrupt
 }
 
 void loop()
@@ -521,7 +502,7 @@ void loop()
             else if (controlRegisterValue & signalClearCounts)
             {
                 TakeTheBus();
-                t = RTC.get();
+                    t = RTC.get();
                 GiveUpTheBus();
                 hourlyPersonCount = 0;
                 dailyPersonCount = 0;
@@ -559,52 +540,56 @@ void loop()
             }
         }
     }
-    if (PIRInt)
-    {
+    if (inTest == 1) {
         CheckForBump();
-    }
-    if (inTest && millis() >= lastBump + delaySleep) {
-        sleepNow();     // sleep function called here
+        if (millis() >= lastBump + delaySleep) {
+            sleepNow();     // sleep function called here
+        }
     }
 }
 
 void CheckForBump() // This is where we check to see if an interrupt is set when not asleep or act on a tap that woke the Arduino
 {
-    lastBump = millis();    // Reset last bump timer
-    Serial.print("Detected");
-    ledState = !ledState;
-    digitalWrite(REDLED,ledState);
-    PIRInt = false; // Reset the flag
-    TakeTheBus();
-        t = RTC.get();
-    Serial.print(".");
-    GiveUpTheBus();
-    Serial.print(".");
-    if (t == 0) return;     // This means there was an error in reading the real time clock - very rare in testing so will simply throw out this count
-    if (HOURLYPERIOD != currentHourlyPeriod) {
-        LogHourlyEvent();
+    if(digitalRead(PIRPIN) && countEnable)
+    {
+        lastBump = millis();    // Reset last bump timer
+        countEnable = false;    // Make sure we only count once for each trigger
+        Serial.print("Detected");
+        ledState = !ledState;
+        digitalWrite(REDLED,ledState);
+        PIRInt = false; // Reset the flag
+        TakeTheBus();
+            t = RTC.get();
+        Serial.print(".");
+        GiveUpTheBus();
+        Serial.print(".");
+        if (t == 0) return;     // This means there was an error in reading the real time clock - very rare in testing so will simply throw out this count
+        if (HOURLYPERIOD != currentHourlyPeriod) {
+            LogHourlyEvent();
+        }
+        Serial.print(".");
+        if (DAILYPERIOD != currentDailyPeriod) {
+            LogDailyEvent();
+        }
+        Serial.print(".");
+        hourlyPersonCount++;                    // Increment the PersonCount
+        FRAMwrite16(CURRENTHOURLYCOUNTADDR, hourlyPersonCount);  // Load Hourly Count to memory
+        Serial.print(".");
+        dailyPersonCount++;                    // Increment the PersonCount
+        FRAMwrite16(CURRENTDAILYCOUNTADDR, dailyPersonCount);   // Load Daily Count to memory
+        Serial.print(".");
+        FRAMwrite32(CURRENTCOUNTSTIME, t);   // Write to FRAM - this is so we know when the last counts were saved
+        Serial.print(".");
+        Serial.print(F("Hourly: "));
+        Serial.print(hourlyPersonCount);
+        Serial.print(F(" Daily: "));
+        Serial.print(dailyPersonCount);
+        Serial.print(F(" Reboots: "));
+        Serial.print(bootcount);
+        Serial.print(F("  Time: "));
+        PrintTimeDate(t);
     }
-    Serial.print(".");
-    if (DAILYPERIOD != currentDailyPeriod) {
-        LogDailyEvent();
-    }
-    Serial.print(".");
-    hourlyPersonCount++;                    // Increment the PersonCount
-    FRAMwrite16(CURRENTHOURLYCOUNTADDR, hourlyPersonCount);  // Load Hourly Count to memory
-    Serial.print(".");
-    dailyPersonCount++;                    // Increment the PersonCount
-    FRAMwrite16(CURRENTDAILYCOUNTADDR, dailyPersonCount);   // Load Daily Count to memory
-    Serial.print(".");
-    FRAMwrite32(CURRENTCOUNTSTIME, t);   // Write to FRAM - this is so we know when the last counts were saved
-    Serial.print(".");
-    Serial.print(F("Hourly: "));
-    Serial.print(hourlyPersonCount);
-    Serial.print(F(" Daily: "));
-    Serial.print(dailyPersonCount);
-    Serial.print(F(" Reboots: "));
-    Serial.print(bootcount);
-    Serial.print(F("  Time: "));
-    PrintTimeDate(t);
+    else if (!digitalRead(PIRPIN)) countEnable = true;      // Reset the count enable trigger
 }
 
 void StartStopTest(boolean startTest)  // Since the test can be started from the serial menu or the Simblee - created a function
@@ -754,15 +739,14 @@ void ClearPinChangeInterrupt(byte Pin)  // Here is where we clear the pinchange 
 {
     *digitalPinToPCMSK(Pin) &= bit (digitalPinToPCMSKbit(Pin));  // disable pin
     PCIFR  != bit (digitalPinToPCICRbit(Pin)); // clear any outstanding interrupt
-    PCICR  &= bit (digitalPinToPCICRbit(Pin)); // disnable interrupt for the group
+    PCICR  &= bit (digitalPinToPCICRbit(Pin)); // disable interrupt for the group
 }
 
 ISR (PCINT2_vect)   // interrupt service routine in sleep mode for PIR PinChange Interrupt (D0-D7)
 {
     // execute code here after wake-up before returning to the loop() function
-    if (inTest == 1 && digitalReadFast(PIRPIN)) {       // remember this is a pin change - want to make sure it is HIGH
-        PIRInt = true;  //
-    }
+    sleep_disable ();           // first thing after waking from sleep:
+    ClearPinChangeInterrupt(PIRPIN);
 }
 
 ISR (WDT_vect)      // interupt service routine for the watchdog timer
@@ -776,15 +760,14 @@ void sleepNow()
     // Here is a great tutorial on interrupts and sleep: http://www.gammon.com.au/interrupts
     Serial.print(F("Entering Sleep mode..."));
     Serial.flush ();            // wait for Serial to finish outputting
-    Serial.end ();              // shut down Serial
-    noInterrupts ();            // make sure we don't get interrupted before we sleep
     set_sleep_mode (SLEEP_MODE_PWR_DOWN);
+    noInterrupts ();            // make sure we don't get interrupted before we sleep
     sleep_enable ();            // enables the sleep bit in the mcucr register
+    SetPinChangeInterrupt(PIRPIN);      // Attach the PinChange Interrupt
     interrupts ();              // interrupts allowed now, next instruction WILL be executed
     sleep_cpu ();               // here the device is put to sleep
-    sleep_disable ();           // first thing after waking from sleep:
+    // THE PROGRAM CONTINUES FROM HERE AFTER WAKING UP
     delay(10);                  // This small delay gives the i2c bus time to reinitialize
-    Serial.begin(9600);         // Restart Serial
     Serial.println(F("Waking up"));
 }
 
@@ -811,9 +794,9 @@ void BlinkForever() // When something goes badly wrong...
 {
     Serial.println(F("Error - Reboot"));
     while(1) {
-        digitalWriteFast(REDLED,HIGH);
+        digitalWrite(REDLED,HIGH);
         delay(200);
-        digitalWriteFast(REDLED,LOW);
+        digitalWrite(REDLED,LOW);
         delay(200);
     }
 }

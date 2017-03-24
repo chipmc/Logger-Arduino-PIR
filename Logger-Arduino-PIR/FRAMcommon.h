@@ -150,23 +150,23 @@ boolean TakeTheBus()  // Now includes watchdog timer
     wdt_reset();            // Reset before we set the timer.
     wdt_enable(WDTO_1S);    // Gives this set of actions 1 second to complete
     if (clockHighorLow) {
-        while(digitalReadFast(THE32KPIN)) {} // The Simblee will only read the Talk line when SQW pin goes low
+        while(digitalRead(THE32KPIN)) {} // The Simblee will only read the Talk line when SQW pin goes low
     }
-    else while(!(digitalReadFast(THE32KPIN))) {} // The Simblee will only read the Talk line when SQW pin goes low
+    else while(!(digitalRead(THE32KPIN))) {} // The Simblee will only read the Talk line when SQW pin goes low
 
-    while (!digitalReadFast(TALKPIN)) { // Only proceed once the TalkPin is high
+    while (!digitalRead(TALKPIN)) { // Only proceed once the TalkPin is high
         NonBlockingDelay(50);
     }
-    pinModeFast(TALKPIN,OUTPUT);        // Change to output
-    digitalWriteFast(TALKPIN,LOW);      // Claim the bus by bringing the TalkPin LOW
+    pinMode(TALKPIN,OUTPUT);        // Change to output
+    digitalWrite(TALKPIN,LOW);      // Claim the bus by bringing the TalkPin LOW
     //Serial.println(F("..We have the bus"));
     return 1;                       // We have it
 }
 
 boolean GiveUpTheBus()
 {
-    digitalWriteFast(TALKPIN,HIGH); // Not sure if this is needed - still for completeness.
-    pinModeFast(TALKPIN,INPUT_PULLUP);  // Start listening again
+    digitalWrite(TALKPIN,HIGH); // Not sure if this is needed - still for completeness.
+    pinMode(TALKPIN,INPUT_PULLUP);  // Start listening again
     //Serial.println("Simblee: We gave up the Bus");
     wdt_disable();      // Turn off the watchdog
     return 1;
