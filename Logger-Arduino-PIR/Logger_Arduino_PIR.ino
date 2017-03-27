@@ -131,7 +131,7 @@
 #define YELLOWLED 4                 // The yellow LED
 #define LEDPWR 7                    // This pin turns on and off the LEDs
 // Finally, here are the variables I want to change often and pull them all together here
-#define SOFTWARERELEASENUMBER "1.0.0"
+#define SOFTWARERELEASENUMBER "1.0.1"
 
 
 
@@ -227,8 +227,13 @@ int bootCountAddr = 0;              // Address for Boot Count Number
 // Add setup code
 void setup()
 {
+    //disable watchdog if enabled
+    wdt_reset();
+    MCUSR=0;
+    WDTCSR|=_BV(WDCE) | _BV(WDE);
+    WDTCSR=0;
     Serial.begin(9600);                     // Initialize communications with the terminal
-    Serial.print(".");
+    delay(100);
     Serial.println("");                     // Header information
     Serial.print(F("Connected Sensor PIR - release "));
     Serial.println(releaseNumber);

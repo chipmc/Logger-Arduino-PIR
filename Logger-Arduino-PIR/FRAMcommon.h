@@ -139,23 +139,36 @@ void ResetFRAM()  // This will reset the FRAM - set the version and preserve del
         if (i==16384) Serial.println(F("50% done"));
         if (i==(24576)) Serial.println(F("75% done"));
         if (i==32767) Serial.println(F("Done"));
-        delay(2);
+        delay(1);
     }
     FRAMwrite8(VERSIONADDR,VERSIONNUMBER);  // Reset version to match #define value for sketch
 }
 
-boolean TakeTheBus()  // Now includes watchdog timer
+boolean TakeTheBus()  // Now includes watchdog timer - 1 second delay but a 5 second wait for the i2c bus to become free
 {
+    unsigned long runningClock;             // keeps track of how long we have
+    unsigned long lastKick;
+    unsigned int kickTheDog = 500;          // how often we will kick the dog while waiting
+    unsigned int totalWaitingTime = 5000;  // 5 seconds
+    
+    
+    runningClock = millis();  // Start the clock
+    
     //Serial.print(F(Asking for the bus..."));
     wdt_reset();            // Reset before we set the timer.
     wdt_enable(WDTO_1S);    // Gives this set of actions 1 second to complete
     if (clockHighorLow) {
-        while(digitalRead(THE32KPIN)) {} // The Simblee will only read the Talk line when SQW pin goes low
+        while(digitalRead(THE32KPIN)) {} // The Simblee will only read the Talk line when SQW pin goes high
     }
-    else while(!(digitalRead(THE32KPIN))) {} // The Simblee will only read the Talk line when SQW pin goes low
+    else while(!(digitalRead(THE32KPIN))) {} // The Arduino will only read the Talk line when SQW pin goes low
 
     while (!digitalRead(TALKPIN)) { // Only proceed once the TalkPin is high
-        NonBlockingDelay(50);
+        if (millis() > lastKick + kickTheDog && millis() < runningClock + totalWaitingTime)
+        {
+            lastKick = millis();    // Update the time we last kicked the dog
+            wdt_reset();            // kick the dog
+        }
+        NonBlockingDelay(50);       // reduce the rate at which we check the bus
     }
     pinMode(TALKPIN,OUTPUT);        // Change to output
     digitalWrite(TALKPIN,LOW);      // Claim the bus by bringing the TalkPin LOW
