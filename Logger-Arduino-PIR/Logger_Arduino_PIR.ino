@@ -131,7 +131,7 @@
 #define YELLOWLED 4                 // The yellow LED
 #define LEDPWR 7                    // This pin turns on and off the LEDs
 // Finally, here are the variables I want to change often and pull them all together here
-#define SOFTWARERELEASENUMBER "1.0.1"
+#define SOFTWARERELEASENUMBER "1.0.2"
 
 
 
@@ -309,9 +309,6 @@ void setup()
     GiveUpTheBus();
     
     FRAMwrite8(CONTROLREGISTER, toggleStartStop);       // Reset the control register and start the test
-    
-    controlRegisterValue = FRAMread8(CONTROLREGISTER);
-    FRAMwrite8(CONTROLREGISTER, controlRegisterValue | turnLedsOn); // Turn on the LEDs at startup
     
     Serial.print(F("Sensor is warming up..."));
     controlRegisterValue = FRAMread8(CONTROLREGISTER);
@@ -662,10 +659,14 @@ void LogDailyEvent() // Log Daily Event()
     breakTime(LogTime, timeElement);
     int pointer = (DAILYOFFSET + FRAMread8(DAILYPOINTERADDR))*WORDSIZE;  // get the pointer from memory and add the offset
     FRAMwrite8(pointer,timeElement.Month); // The month of the last count
+    // This code will ensure the pointer in EEPROM for reboots us updated to the right month if needed
+    bootCountAddr = timeElement.Month;                   // Boot counts are offset by month to reduce burn - in risk
+    EEPROM.update(0, bootCountAddr);            // Will update the month if it has changed
+    // End EEPROM section - back to Logging Daily Event
     FRAMwrite8(pointer+DAILYDATEOFFSET,timeElement.Day);  // Write to FRAM - this is the end of the period  - should be the day
     FRAMwrite16(pointer+DAILYCOUNTOFFSET,dailyPersonCount);
     TakeTheBus();
-    stateOfCharge = batteryMonitor.getSoC();
+        stateOfCharge = batteryMonitor.getSoC();
     GiveUpTheBus();
     FRAMwrite8(pointer+DAILYBATTOFFSET,stateOfCharge);
     byte newDailyPointerAddr = (FRAMread8(DAILYPOINTERADDR)+1) % DAILYCOUNTNUMBER;  // This is where we "wrap" the count to stay in our memory space

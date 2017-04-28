@@ -10,8 +10,6 @@
   Licence GNU General Public Licence
 
 /*
-This code is for setting up and testing the clock, data logger and the sensor using a bluetooth serial
-connection on the FTDI / UART port.
 
 Acknolwedgemetns - I have benefitted greatly from the following contributions.
 - RTClib from Adafruit
@@ -25,18 +23,22 @@ Hardware setup:
 - **Important** For the Watchdog Timer Functions to work, you need to reflash the Arduino with the MiniCore Bootloader
 - For Information, go here: https://github.com/MCUdude/MiniCore
 - PIR Sensor with 3.3V and Signal on INT2-D3
-- INT2 - D3
+- INT2 - D3 - PIR Sensor interrupt - Active high
 - INT1 - D2  - Not currently used
 - TI FRAM Chip on i2c Bus
 - DS3231 RTC Module on the i2c bus
 - Indicator LED on pin 4
 
-Memory Map v7
+EEPROM Memory Map
+0   Monthly Offset (value 1-12)
+1-12 Monthly reboot counts for Jan (1) through December (12)
 
+
+FRAM Memory Map v7
 Memory Map - 256kb or 32kB divided into 4096 words - the  first one is reserved
 Byte     Value
 The first word is for system data
-0        Memory Map Version (this program expects 2)
+0        Memory Map Version (this program expects the value #defined in VERSIONNUMBER)
 1        Park Opens  (24 hour clock)
 2        Park Closes (24 hour clock)
 3        Monthly Reboot Count - System Health

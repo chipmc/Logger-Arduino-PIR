@@ -20,7 +20,8 @@
 // THE SKETCH IS IN Logger_Arduino_PIR.ino
 // ----------------------------------
 //
-// Last update: Feb 24, 2017 release 7.1.7
+// Updated from 7.1.7 to 7.3.0 on Apr 03, 2017 18:58:52
+// Last update: Apr 04, 2017 release 7.3.0
 
 // IDE selection
 #if defined(EMBEDXCODE)
@@ -1630,7 +1631,7 @@ int main()
     return (0); /* should never get here, but just in case ... */
 }
 
-#elif defined(__CC1310__) || defined(ENERGIA_ARCH_CC13XX)
+#elif defined(__CC1310__) || defined(ENERGIA_ARCH_CC13XX) || defined(__CC1350__) || defined(ENERGIA_ARCH_CC13XX)
 #warning MAIN_SECTION 41 = CC1310 EMT
 // ----------------------------------------------------------------------------- LaunchPad CC1310 specific
 
@@ -2582,6 +2583,157 @@ int __attribute__((weak)) main(void)
     return 0;
 }
 
+#elif defined(ADAFRUIT_SAMD_RELEASE)
+#warning MAIN_SECTION 45 = Adafruit SAMD
+
+/*
+ Copyright (c) 2015 Arduino LLC.  All right reserved.
+ 
+ This library is free software; you can redistribute it and/or
+ modify it under the terms of the GNU Lesser General Public
+ License as published by the Free Software Foundation; either
+ version 2.1 of the License, or (at your option) any later version.
+ 
+ This library is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ See the GNU Lesser General Public License for more details.
+ 
+ You should have received a copy of the GNU Lesser General Public
+ License along with this library; if not, write to the Free Software
+ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+ */
+
+#define ARDUINO_MAIN
+#include "Arduino.h"
+
+// Weak empty variant initialization function.
+// May be redefined by variant files.
+void initVariant() __attribute__((weak));
+void initVariant() { }
+
+// Initialize C library
+extern "C" void __libc_init_array(void);
+
+/*
+ * \brief Main entry point of Arduino application
+ */
+int main( void )
+{
+    init();
+    
+    __libc_init_array();
+    
+    initVariant();
+    
+    delay(1);
+#if defined(USBCON)
+    USBDevice.init();
+    USBDevice.attach();
+#endif
+    
+    setup();
+    
+    for (;;)
+    {
+        loop();
+        if (serialEventRun) serialEventRun();
+    }
+    
+    return 0;
+}
+
+
+#elif defined(ADAFRUIT_ARCH_NRF52)
+#warning MAIN_SECTION 44 = Adafruit nRF52
+
+/*
+ Copyright (c) 2015 Arduino LLC.  All right reserved.
+ This library is free software; you can redistribute it and/or
+ modify it under the terms of the GNU Lesser General Public
+ License as published by the Free Software Foundation; either
+ version 2.1 of the License, or (at your option) any later version.
+ This library is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ See the GNU Lesser General Public License for more details.
+ You should have received a copy of the GNU Lesser General Public
+ License along with this library; if not, write to the Free Software
+ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+ */
+
+#define ARDUINO_MAIN
+#include "Arduino.h"
+
+#define MEMINFO_INTERVAL    30000
+
+// Weak empty variant initialization function.
+// May be redefined by variant files.
+void initVariant() __attribute__((weak));
+void initVariant() { }
+
+uint32_t _loopStacksize = 512*3;
+
+uint32_t setLoopStacksize(void) __attribute__ ((weak));
+
+static void loop_task(void* arg)
+{
+    (void) arg;
+    
+    setup();
+    
+#if CFG_DEBUG
+    // If Serial is not begin(), call it to avoid hard fault
+    if (!Serial) Serial.begin(115200);
+    dbgPrintVersion();
+#endif
+    
+    while (1)
+    {
+        loop();
+        
+#if CFG_DEBUG > 1 // Full Debug
+        static uint32_t meminfo_ms = 0;
+        if (meminfo_ms + MEMINFO_INTERVAL < millis())
+        {
+            meminfo_ms += millis();
+            Serial.printf("Memory Info (print every %d seconds)\n", MEMINFO_INTERVAL/1000);
+            dbgMemInfo();
+        }
+#endif
+        
+        // To compatible with most code where loop is not rtos-aware
+        taskYIELD(); // vTaskDelay(1);
+    }
+}
+
+/*
+ * \brief Main entry point of Arduino application
+ */
+int main( void )
+{
+    init();
+    
+    initVariant();
+    
+    if (setLoopStacksize)
+    {
+        _loopStacksize = setLoopStacksize();
+    }
+    
+    // Create a task for loop()
+    TaskHandle_t  _loopHandle;
+    xTaskCreate( loop_task, "loop", _loopStacksize, NULL, TASK_PRIO_NORMAL, &_loopHandle);
+    
+    // Start FreeRTOS scheduler.
+    vTaskStartScheduler();
+    
+    NVIC_SystemReset();
+    
+    return 0;
+}
+
+
 #elif defined(ARDUINO)
 // ============================================================================= Arduino specific
 
@@ -2595,8 +2747,87 @@ int __attribute__((weak)) main(void)
 #else
 // ----------------------------------------------------------------------------- Arduino 1.8.x specific
 
+#if defined(ARDUINO_ARCH_STM32F4)
+#warning MAIN_SECTION 44 = Arduino 1.8.x STM32F4
+// ............................................................................. Arduino 1.8.x X86 architecture
 
-#if defined(__ARDUINO_X86__)
+/******************************************************************************
+    The MIT License
+
+    Copyright (c) 2010 LeafLabs LLC.
+
+    Permission is hereby granted, free of charge, to any person
+    obtaining a copy of this software and associated documentation
+    files (the "Software"), to deal in the Software without
+    restriction, including without limitation the rights to use, copy,
+    modify, merge, publish, distribute, sublicense, and/or sell copies
+    of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be
+    included in all copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+    EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+    MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+    NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
+    BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
+    ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+    CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE.
+ *****************************************************************************/
+
+/*
+    Arduino srl - www.arduino.org
+    2016 Jun 9: Edited Francesco Alessi (alfran) - francesco@arduino.org
+*/
+
+#include "usb_device.h"
+#include "usbd_core.h"
+#include "usbd_cdc_if.h"
+#include "io.h"
+
+extern void setup(void);
+extern void loop(void);
+extern void init(void);
+
+
+extern USBD_HandleTypeDef hUsbDeviceFS;
+
+
+// Force init to be called *first*, i.e. before static object allocation.
+// Otherwise, statically allocated objects that need libmaple may fail.
+__attribute__((constructor)) void premain()
+{
+    init();
+}
+
+int main(void)
+{
+
+    /* Initialize USB device stack */
+    uint8_t ttBuf[1] = {9};
+    MX_USB_DEVICE_Init();
+
+    /*  Enable FPU
+        Note: this should have already been done in SystemInit() in HAL/src/system_stm32f4xx.c */
+    SCB->CPACR |= ((3UL << 10 * 2) | (3UL << 11 * 2)); /* set CP10 and CP11 Full Access */
+    analogReadResolution(10);
+
+    // Set MIC Connected to CODEC
+    pinMode(MIC_SEL, OUTPUT);
+    digitalWrite(MIC_SEL, CODEC);
+
+    setup();
+
+    while (1)
+    {
+        loop();
+    }
+    return 0;
+}
+
+#elif defined(__ARDUINO_X86__)
 #warning MAIN_SECTION 28 = Arduino 1.8.x X86
 // ............................................................................. Arduino 1.8.x X86 architecture specific
 
@@ -3003,4 +3234,5 @@ int main(void)
 
 
 #endif                                                                          // end embedXcode
+
 
