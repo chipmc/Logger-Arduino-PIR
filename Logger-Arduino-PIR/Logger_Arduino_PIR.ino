@@ -332,6 +332,7 @@ void setup()
     controlRegisterValue = FRAMread8(CONTROLREGISTER);
     FRAMwrite8(CONTROLREGISTER, controlRegisterValue & clearWarmUpFlag);  // Turn off the warm up flag
     
+    digitalWrite(LEDPWR, HIGH);                          // Turn off the power to the LEDs to signal end of startup
     FRAMwrite8(CONTROLREGISTER, toggleStartStop);       // Reset the control register and start the test
 }
 
