@@ -78,22 +78,21 @@
 // There are some new pin assignments when using the new v10 board - default for the PIR sensor since we can turn it off
 #define V10BOARD 1
 #if V10BOARD                    // These are the pin assignments for the v9 board
-#define ALARMPIN 3         // This one will be used for the RTC Alarm in v9
-#define INT2PIN 2         // This is the interrupt pin that registers taps
-#define INTNUMBER 0         // so I don't have to use the lookup function
-#define PIRPIN 5            // This is a pin which connects to the i2c header - future use
-#define I2CPWR 8            // Turns the i2c port on and off
-#define RESETPIN 16         // This a modification using a bodge wire
-#define TALKPIN 14           // This is the open-drain line for signaling i2c mastery (A0 on the Uno is 14)
-#define THE32KPIN 15      // This is a 32k squarewave from the DS3231 (A1 on the Uno is 15)
-#else                      // These are the pin assignments for the v8b board
-#define SENSORPIN 2         // Not used now but wired for future use
-#define PIRPIN 3         // This is the interrupt pin for the PIR Sensor, Active High, Push-Pull
-#define ALARMPIN 5         // This is the pin with the RTC Alarm clock - not used on Arduino side
-#define I2CPWR 8            // Turns the i2c port on and off
-#define RESETPIN 16         // This a modification using a bodge wire
-#define TALKPIN 14           // This is the open-drain line for signaling i2c mastery (A0 on the Uno is 14)
-#define THE32KPIN 15      // This is a 32k squarewave from the DS3231 (A1 on the Uno is 15)
+#define ALARMPIN 3              // This one will be used for the RTC Alarm in v9
+#define INT2PIN 2               // This is the interrupt pin that registers taps
+#define PIRPIN 5                // This is a pin which connects to the i2c header - future use
+#define I2CPWR 8                // Turns the i2c port on and off
+#define RESETPIN 16             // This a modification using a bodge wire
+#define TALKPIN 14              // This is the open-drain line for signaling i2c mastery (A0 on the Uno is 14)
+#define THE32KPIN 15            // This is a 32k squarewave from the DS3231 (A1 on the Uno is 15)
+#else                           // These are the pin assignments for the v8b board
+#define SENSORPIN 2             // Not used now but wired for future use
+#define PIRPIN 3                // This is the interrupt pin for the PIR Sensor, Active High, Push-Pull
+#define ALARMPIN 5              // This is the pin with the RTC Alarm clock - not used on Arduino side
+#define I2CPWR 8                // Turns the i2c port on and off
+#define RESETPIN 16             // This a modification using a bodge wire
+#define TALKPIN 14              // This is the open-drain line for signaling i2c mastery (A0 on the Uno is 14)
+#define THE32KPIN 15            // This is a 32k squarewave from the DS3231 (A1 on the Uno is 15)
 #endif
 
 //Time Period Definitions - used for debugging
@@ -160,6 +159,7 @@ void LogDailyEvent(); // Log Daily Event()
 void CheckForBump(); // Check for bump
 void SetPinChangeInterrupt(byte Pin);  // Here is where we set the pinchange interrupt
 void ClearPinChangeInterrupt(byte Pin);  // Here is where we clear the pinchange interrupt
+void hardwareISR();        // RTC Alarm Clock Interrupy Handler
 void sleepNow();  // Puts the Arduino to Sleep
 void NonBlockingDelay(int millisDelay);  // Used for a non-blocking delay
 int freeRam ();  // Debugging code, to check usage of RAM
@@ -182,6 +182,7 @@ unsigned int dailyPersonCount = 0;   //  daily counter
 byte currentHourlyPeriod;    // This is where we will know if the period changed
 byte currentDailyPeriod;     // We will keep daily counts as well as period counts
 int countTemp = 0;          // Will use this to see if we should display a day or hours counts
+volatile bool RTCAlarm = false; // When the RTC Alarm goes off
 
 // Variables for the control byte
 // Control Register  (8 - 7 Reserved, 6 - Simblee Reset, 5-Clear Counts, 4-Simblee Sleep, 3-Start / Stop Test, 2-Warmup, 1-LED state)
@@ -202,7 +203,9 @@ int controlRegisterDelay = 1000;            // Ho often will we check the contro
 
 
 // PIR Sensor Variables
-unsigned long warmUpTime = 1000;    // PIR Sensors need 45-60 seconds to warm up
+unsigned long warmUpTime = 35000;   // PIR Sensors need 45-60 seconds to warm up
+unsigned long wakeUpTime;           // To give the PIR sensor time to warm up after waking
+unsigned long startupTime;
 volatile bool PIRInt = false;       // A flag for the PIR Interrupt
 boolean countEnable = false;        // Need to count only once for each time the sensor triggers
 
@@ -233,12 +236,11 @@ void setup()
     WDTCSR|=_BV(WDCE) | _BV(WDE);
     WDTCSR=0;
     Serial.begin(9600);                     // Initialize communications with the terminal
-    delay(100);
+    delay(300);
     Serial.println("");                     // Header information
     Serial.print(F("Connected Sensor PIR - release "));
     Serial.println(releaseNumber);
     Wire.begin();
-    Serial.print(".");
     pinMode(REDLED, OUTPUT);            // declare the Red LED Pin as an output
     pinMode(YELLOWLED, OUTPUT);         // declare the Yellow LED Pin as as OUTPUT
     pinMode(LEDPWR, OUTPUT);            // declare the Power LED pin as as OUTPUT
@@ -249,12 +251,9 @@ void setup()
     pinMode(PIRPIN, INPUT);            // Set up the interrupt pins, they're set as active low with an external pull-up
     pinMode(THE32KPIN,INPUT);           // These are the pins tha are used to negotiate for the i2c bus
     pinMode(TALKPIN,INPUT);             // These are the pins tha are used to negotiate for the i2c bus
-    Serial.print(".");
     enable32Khz(1); // turns on the 32k squarewave - to moderate access to the i2c bus
-    Serial.print(".");
     
     TakeTheBus(); // Need the i2c bus for initializations
-    Serial.print(".");
         if (fram.begin()) {  // you can stick the new i2c addr in here, e.g. begin(0x51);
             Serial.println(F("Found I2C FRAM"));
         } else {
@@ -262,7 +261,6 @@ void setup()
             BlinkForever();
         }
     GiveUpTheBus(); // Done with i2c initializations Arduino gives up the bus here.
-    Serial.println(".");
     
     if (FRAMread8(VERSIONADDR) != VERSIONNUMBER) {  // Check to see if the memory map in the sketch matches the data on the chip
         Serial.print(F("FRAM Version Number: "));
@@ -287,38 +285,27 @@ void setup()
     ParkOpens = FRAMread8(PARKOPENSADDR);   // Get the Opening Time
     ParkCloses = FRAMread8(PARKCLOSESADDR); // Get the Park closing time
     TakeTheBus();
-    batteryMonitor.reset();               // Initialize the battery monitor
-    batteryMonitor.quickStart();
-    setSyncProvider(RTC.get);              // Set up the clock as we will control it and the alarms here
-    Serial.println(F("RTC Sync"));
-    if (timeStatus() != timeSet) {
-        Serial.println(F(" time sync fail!"));
-        BlinkForever();
-    }
-    // We need to set an Alarm or Two in order to ensure that the Simblee is put to sleep at night
-    if (ParkOpens > 12) ParkOpens = 12;     // Keep it in bounds
-    if (ParkCloses > 23) ParkCloses = 23;   // Keep it in bounds
-    else if (ParkCloses < 13) ParkCloses = 13;  // Keep it in bounds
-    RTC.squareWave(SQWAVE_NONE);            //Disable the default square wave of the SQW pin.
-    RTC.alarm(ALARM_1);                     // This will clear the Alarm flags
-    RTC.alarm(ALARM_2);                     // This will clear the Alarm flags
-    RTC.setAlarm(ALM1_MATCH_HOURS,00,00,ParkCloses,0); // Set the evening Alarm
-    RTC.setAlarm(ALM2_MATCH_HOURS,00,00,ParkOpens,0); // Set the morning Alarm
-    RTC.alarmInterrupt(ALARM_2, true);      // Connect the Interrupt to the Alarms (or not)
-    RTC.alarmInterrupt(ALARM_1, true);
+        batteryMonitor.reset();               // Initialize the battery monitor
+        batteryMonitor.quickStart();
+        setSyncProvider(RTC.get);              // Set up the clock as we will control it and the alarms here
+        Serial.println(F("RTC Sync"));
+        if (timeStatus() != timeSet) {
+            Serial.println(F(" time sync fail!"));
+            BlinkForever();
+        }
+        // We need to set an Alarm or Two in order to ensure that the Simblee is put to sleep at night
+        if (ParkOpens > 12) ParkOpens = 12;     // Keep it in bounds
+        if (ParkCloses > 23) ParkCloses = 23;   // Keep it in bounds
+        else if (ParkCloses < 13) ParkCloses = 13;  // Keep it in bounds
+        RTC.squareWave(SQWAVE_NONE);            //Disable the default square wave of the SQW pin.
+        RTC.alarm(ALARM_1);                     // This will clear the Alarm flags
+        RTC.alarm(ALARM_2);                     // This will clear the Alarm flags
+        RTC.setAlarm(ALM1_MATCH_HOURS,00,00,ParkCloses,0); // Set the evening Alarm
+        RTC.setAlarm(ALM2_MATCH_HOURS,00,00,ParkOpens,0); // Set the morning Alarm
+        RTC.alarmInterrupt(ALARM_2, true);      // Connect the Interrupt to the Alarms (or not)
+        RTC.alarmInterrupt(ALARM_1, true);
     GiveUpTheBus();
-    
-    FRAMwrite8(CONTROLREGISTER, toggleStartStop);       // Reset the control register and start the test
-    
-    Serial.print(F("Sensor is warming up..."));
-    controlRegisterValue = FRAMread8(CONTROLREGISTER);
-    FRAMwrite8(CONTROLREGISTER, controlRegisterValue | warmUpFlag);  // Turn on the warm up flag
-    while (millis() < warmUpTime);
-    Serial.println(F("ready to go!"));
-    controlRegisterValue = FRAMread8(CONTROLREGISTER);
-    FRAMwrite8(CONTROLREGISTER, controlRegisterValue & clearWarmUpFlag);  // Turn off the warm up flag
-    
-    
+
     Serial.print(F("Monthly reboot count is "));
     bootCountAddr = EEPROM.read(0);             // Here is where we will track reboots by month - offset stored in 0 byte
     bootcount = EEPROM.read(bootCountAddr);     // Use the offset to get to this month's boot count
@@ -328,22 +315,29 @@ void setup()
     FRAMwrite8(MONTHLYREBOOTCOUNT, bootcount); // Store in FRAM for access by Simblee in user interface
     Serial.print(F(" with a monthly offset of: "));
     TakeTheBus();
-        t = RTC.get();
+    t = RTC.get();
     GiveUpTheBus();
     bootCountAddr = month(t);                   // Boot counts are offset by month to reduce burn - in risk
     EEPROM.update(0, bootCountAddr);            // Will update the month if it has changed but only at reboot
     Serial.println(EEPROM.read(0));             // Print so we can see if code is working
-
     
-    Serial.print(F("Free memory: "));
+    Serial.print(F("Free memory: "));           // Diagnostics to make sure there are no memory leaks
     Serial.println(freeRam());
     
+    Serial.print(F("Sensor is warming up..."));
+    controlRegisterValue = FRAMread8(CONTROLREGISTER);
+    FRAMwrite8(CONTROLREGISTER, controlRegisterValue | warmUpFlag);  // Turn on the warm up flag
+    while (millis() < warmUpTime);
+    Serial.println(F("ready to go!"));
+    controlRegisterValue = FRAMread8(CONTROLREGISTER);
+    FRAMwrite8(CONTROLREGISTER, controlRegisterValue & clearWarmUpFlag);  // Turn off the warm up flag
+    
+    FRAMwrite8(CONTROLREGISTER, toggleStartStop);       // Reset the control register and start the test
 }
 
 void loop()
 {
-    if (refreshMenu)
-    {
+    if (refreshMenu) {
         refreshMenu = 0;
         Serial.println(F("Remote Trail Counter Program Menu"));
         Serial.println(F("0 - Display Menu"));
@@ -542,8 +536,28 @@ void loop()
             }
         }
     }
-    if (inTest == 1) {
+    if (inTest) {
         CheckForBump();
+        if (RTCAlarm) {                 // This is a battery saving measure for when the device is deployed
+            TakeTheBus();
+                t = RTC.get();
+            GiveUpTheBus();
+            tmElements_t timeElement;
+            breakTime(t, timeElement);
+            RTCAlarm = false;
+            if (timeElement.Hour == ParkCloses)
+            {
+                Serial.println(F("Park Closed - Turn off PIR Sensor"));
+                digitalWrite(I2CPWR, LOW);
+            }
+            else if (timeElement.Hour == ParkOpens)
+            {
+                Serial.println(F("Park Opens - Turn on PIR Sensor"));
+                digitalWrite(I2CPWR, HIGH);
+                wakeUpTime = millis();
+                while (millis()< (wakeUpTime + warmUpTime)) { } // This makes sure we don't get false counts while waking
+            }
+        }
         if (millis() >= lastBump + delaySleep) {
             sleepNow();     // sleep function called here
         }
@@ -562,7 +576,7 @@ void CheckForBump() // This is where we check to see if an interrupt is set when
         PIRInt = false; // Reset the flag
         TakeTheBus();
             t = RTC.get();
-        Serial.print(".");
+            Serial.print(".");  // debug code
         GiveUpTheBus();
         Serial.print(".");
         if (t == 0) return;     // This means there was an error in reading the real time clock - very rare in testing so will simply throw out this count
@@ -752,7 +766,8 @@ ISR (PCINT2_vect)   // interrupt service routine in sleep mode for PIR PinChange
 {
     // execute code here after wake-up before returning to the loop() function
     sleep_disable ();           // first thing after waking from sleep:
-    ClearPinChangeInterrupt(PIRPIN);
+    ClearPinChangeInterrupt(PIRPIN);                        // Disables Pin Change interrupt
+    detachInterrupt(digitalPinToInterrupt(ALARMPIN));      // disables RTC interrupt
 }
 
 ISR (WDT_vect)      // interupt service routine for the watchdog timer
@@ -760,6 +775,17 @@ ISR (WDT_vect)      // interupt service routine for the watchdog timer
     // Could do something here
 }  // end of WDT_vect
 
+void hardwareISR()        // RTC Alarm Clock Interrupy Handler
+{
+    // execute code here after wake-up before returning to the loop() function
+    // timers and code using timers (serial.print and more...) will not work here.
+    // we don't really need to execute any special functions here, since we
+    // just want the thing to wake up
+    sleep_disable();         // first thing after waking from sleep is to disable sleep...
+    ClearPinChangeInterrupt(PIRPIN);                        // Disables Pin Change interrupt
+    detachInterrupt(digitalPinToInterrupt(ALARMPIN));      // disables interrupt
+    RTCAlarm = true;
+}
 
 void sleepNow()
 {
@@ -770,6 +796,7 @@ void sleepNow()
     noInterrupts ();            // make sure we don't get interrupted before we sleep
     sleep_enable ();            // enables the sleep bit in the mcucr register
     SetPinChangeInterrupt(PIRPIN);      // Attach the PinChange Interrupt
+    attachInterrupt(digitalPinToInterrupt(ALARMPIN),hardwareISR, LOW); // use interrupt and run function for RTC Alarms
     interrupts ();              // interrupts allowed now, next instruction WILL be executed
     sleep_cpu ();               // here the device is put to sleep
     // THE PROGRAM CONTINUES FROM HERE AFTER WAKING UP
