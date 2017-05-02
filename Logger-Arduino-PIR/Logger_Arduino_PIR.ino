@@ -130,7 +130,7 @@
 #define YELLOWLED 4                 // The yellow LED
 #define LEDPWR 7                    // This pin turns on and off the LEDs
 // Finally, here are the variables I want to change often and pull them all together here
-#define SOFTWARERELEASENUMBER "1.0.2"
+#define SOFTWARERELEASENUMBER "1.0.3"
 
 
 
@@ -548,8 +548,12 @@ void loop()
             RTCAlarm = false;
             if (timeElement.Hour == ParkCloses)
             {
-                Serial.println(F("Park Closed - Turn off PIR Sensor"));
-                digitalWrite(I2CPWR, LOW);
+                Serial.println(F("Park Closed - Turn off LEDs and PIR Sensor"));
+                digitalWrite(I2CPWR, LOW);      // Turn off the i2c port
+                digitalWrite(LEDPWR, HIGH); // Turn off the power to the LEDs
+                controlRegisterValue = FRAMread8(CONTROLREGISTER);                // Read the current control register
+                FRAMwrite8(CONTROLREGISTER,controlRegisterValue & turnLedsOff );  // Turn off the LED bit
+                
             }
             else if (timeElement.Hour == ParkOpens)
             {
